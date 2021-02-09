@@ -15,6 +15,7 @@ import { tableContextMenuPlugin } from '@/wysiwyg/plugins/tableContextMenu';
 import { taskPlugin } from '@/wysiwyg/plugins/taskPlugin';
 
 import { createTextSelection } from '@/helper/manipulation';
+import { emitImageBlobHook, pasteImageOnly } from '@/helper/image';
 
 import { createSpecs } from './specCreator';
 import { CustomBlockView } from './nodeview/customBlockView';
@@ -26,6 +27,10 @@ import { LinkAttributes } from '@t/editor';
 import { changePastedHTML, changePastedSlice } from '@/wysiwyg/clipboard/paste';
 import { pasteToTable } from '@/wysiwyg/clipboard/pasteToTable';
 import { dropImage } from '@/plugins/dropImage';
+
+interface WindowWithClipboard extends Window {
+  clipboardData?: DataTransfer | null;
+}
 
 const CONTENTS_CLASS_NAME = 'tui-editor-contents';
 
@@ -109,6 +114,26 @@ export default class WysiwygEditor extends EditorBase {
       transformPastedHTML: changePastedHTML,
       transformPasted: (slice: Slice) => changePastedSlice(slice, this.schema),
       handlePaste: (view: EditorView, _: ClipboardEvent, slice: Slice) => pasteToTable(view, slice),
+      handleDOMEvents: {
+        paste: (_, ev) => {
+          const clipboardData =
+            (ev as ClipboardEvent).clipboardData || (window as WindowWithClipboard).clipboardData;
+          const items = clipboardData && clipboardData.items;
+
+          if (items) {
+            const imageBlob = pasteImageOnly(items);
+
+            if (imageBlob) {
+              ev.preventDefault();
+
+              emitImageBlobHook(this.eventEmitter, 'wysiwyg', imageBlob, ev.type);
+
+              return false;
+            }
+          }
+          return true;
+        },
+      },
     });
   }
 
